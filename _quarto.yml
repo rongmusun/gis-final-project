@@ -1,16 +1,19 @@
 project:
-  type: manuscript
+  type: website
   output-dir: docs
 
-manuscript:
-  article: index.qmd
+website:
+  title: "Evaluating the Effectiveness of NYC Subway Accessibility for Schools"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
 
 format:
   html:
-    df-print: kable
-  pdf: default
-  # docx: default
-  jats: default
+    theme: cosmo
+    css: styles.css
+    toc: true
 
 execute:
   freeze: true

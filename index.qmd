@@ -1,61 +1,47 @@
 ---
-title: "Coup-Proofing via Capital Relocation"
+title: "Evaluating the Effectiveness of NYC Subway Accessibility for Schools"
 subtitle: "DSAN 6750 / PPOL 6805: GIS for Spatial Data Science"
 authors:
-  - name: Jeff Jacobs
-    email: jj1088@georgetown.edu
+  - name: Rongmu Sun
+    email: rs2264@georgetown.edu
     affiliation: Georgetown University
     corresponding: true
-df-print: kable
-bibliography: GIS_Manuscript.bib
 title-block-banner: "#E69F0095"
 title-block-banner-color: "black"
 format:
   html:
-    df-print: kable
-  pdf:
-    # https://quarto.org/docs/reference/formats/pdf.html
-    link-citations: true
+    embed-resources: true
+    theme: litera
+    code-fold: true
 prefer-html: true
+warning: false
+message: false
 ---
 
 ## Introduction
 
-Several previous studies have found robust relationships between spatial properties of a country's **capital city** and that country's propensity for **conflict** and **misgovernance**.
+The New York City subway system is one of the largest and most extensive public transit networks in the world, playing a crucial role in the daily lives of millions of residents and visitors. With over 400 stations and miles of track, the subway serves as a vital lifeline for transportation across the city. While the subway network is designed to connect people to key urban areas, its effectiveness in providing access to essential public facilities such as schools remains a critical question for urban planning and policy.
 
-Perceptions of this linkage also have an effect on "coup-proofing" decisions made by national governments. A recent BBC interview with Equatorial Guinea's President Teodoro Obiang, for example, highlighted this as a factor behind his decision to relocate the capital city:
+This project aims to evaluate the effectiveness of the NYC subway system in providing accessibility to schools. Schools are fundamental public facilities that require reliable and equitable access for students, teachers, and staff. By analyzing the spatial relationship between subway lines and schools, this study seeks to determine how well the subway network serves the educational needs of the city’s population.
 
-> It's the remoteness of Oyala that makes it so appealing to President Obiang. In a rare interview he described how rebels had recently plotted a seaborne assault on his palace in the current capital, Malabo. 'We need a secure place for my government and for future governments. That's why we have created Oyala, to guarantee the government of Equatorial Guinea.' [@sackur_equatorial_2012]
+The primary objective of this study is to assess the accessibility of NYC subway lines to schools by measuring the proportion of schools located within a walkable distance (0.5 miles) of a subway station. The study will also identify underserved areas and provide insights for improving transit accessibility to schools.
 
-This case is far from exceptional, as an even more recent *Washington Post* article points out with respect to Myanmar's decision to move its capital from Yangon to Naypyidaw:
+## Hypothesis
 
-> Analysts have described the decision as motivated by a desire to secure the military’s seat of power from any threat of protests or invasions. [@berger_myanmars_2021]
+"The NYC subway system is highly effective in providing access to schools, with a significant proportion of schools located within 0.5 miles of a subway line."
 
-Most of these studies, however, are based on observations of **conflict events**. In this study, we study the more fundamental variable of a capital's distance from the **population centroid** of the country.
+Null Hypothesis (H0): There is no significant difference in accessibility to schools compared to a random distribution of subway lines. The observed coverage rate is due to random chance.
 
-## Literature Review
+Alternative Hypothesis (H1): The NYC subway system is designed to provide effective access to schools, resulting in a higher-than-random school coverage rate.
 
-@campante_capital_2019 analyzes the relationship between the location of a **capital city** and the degree of conflict and misgovernance in a given country. Their two key findings are that:
+This hypothesis explicitly relates to second-order properties, as it evaluates the spatial relationships between two datasets:
 
-> Conflict is more likely to emerge (and dislodge incumbents) closer to the capital
-
-and
-
-> Isolated capitals are associated with misgovernance.
-
-This first finding is illustrated in @fig-conflict-dist
-
-![](images/conflict_dist.svg){#fig-conflict-dist}
-
-## Methodology
-
-The **population centroids** we use herein might require some explanation, since the term "centroid" can be ambiguous.
-
-Here, the population centroids are drawn from @hall_population_2019
+Subway lines (spatial features): Representing the transit infrastructure.
+Schools (spatial points): Representing educational facilities.
 
 ## Exploratory Data Analysis (EDA)
 
-Here we plot the base GIS objects we're analyzing: the location of each **capital city** (in purple) and each **population centroid** (in yellow).
+Here we plot the base GIS objects we're analyzing: the location of each **school points** (in red) and each **subway line** (in blue).
 
 ```{r}
 #| label: imports
@@ -63,47 +49,215 @@ library(tidyverse) |> suppressPackageStartupMessages()
 library(sf) |> suppressPackageStartupMessages()
 library(mapview) |> suppressPackageStartupMessages()
 library(units) |> suppressPackageStartupMessages()
-cb_palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+library(spdep) |> suppressPackageStartupMessages()
+library(ggplot2) |> suppressPackageStartupMessages()
 ```
 
 ```{r}
 #| label: load-eda
-merged_long_sf <- readRDS("merged_long_sf.rds")
-mapview(merged_long_sf, zcol="name", cex=4, label="geounit")
+subway_path <- "Subway Lines NYC"
+school_path <- "SchoolPoints_APS_2024_08_28"
+
+subway_lines <- st_read(file.path(subway_path, "geo_export_175db71c-ebef-4b11-98b7-2e22d21d3e02.shp"))
+school_points <- st_read(file.path(school_path, "SchoolPoints_APS_2024_08_28.shp"))
+
+subway_lines <- st_transform(subway_lines, crs = 4326)
+school_points <- st_transform(school_points, crs = 4326)
 ```
-
-We then construct an **area-normalized** measure of capital-centroid distance $\text{dist}^{\textsf{AN}}$, using the formula
-
-$$
-\text{dist}^{\textsf{AN}}_i = \text{dist}_i / \sqrt{\text{area}_i}.
-$$
-
-A plot of this measure by country looks as follows:
 
 ```{r}
-#| label: plot-area
-merged_area_sf <- readRDS("merged_area_sf.rds")
-mapview(merged_area_sf, zcol="scaled_dist")
+subway_bbox <- st_bbox(subway_lines)
+print(subway_bbox)
 ```
 
+```{r}
+school_points <- school_points %>%
+  filter(
+    st_coordinates(.)[, 1] >= subway_bbox["xmin"] &  # Longitude >= min X
+    st_coordinates(.)[, 1] <= subway_bbox["xmax"] &  # Longitude <= max X
+    st_coordinates(.)[, 2] >= subway_bbox["ymin"] &  # Latitude >= min Y
+    st_coordinates(.)[, 2] <= subway_bbox["ymax"]    # Latitude <= max Y
+  )
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = subway_lines, color = "blue", size = 0.5) +
+  geom_sf(data = school_points, color = "red", size = 1) +
+  labs(title = "NYC Subway Lines and School Locations",
+       caption = "Data: NYC Open Data") +
+  theme_minimal()
+```
+
+```{r}
+coords <- st_coordinates(school_points)
+
+nb <- knearneigh(coords, k = 5)
+listw <- nb2listw(knn2nb(nb))
+
+moran <- moran.test(coords[, 1], listw)
+print(moran)
+```
+
+```{r}
+subway_buffers <- st_buffer(subway_lines, dist = 804.67)
+subway_buffers <- st_union(subway_buffers)
+subway_buffers <- st_sf(geometry = subway_buffers)
+
+ggplot() +
+  geom_sf(data = subway_buffers, fill = "light blue", alpha = 0.3) +
+  geom_sf(data = subway_lines, color = "black") +
+  geom_sf(data = school_points, color = "red", size = 1) +
+  labs(title = "Subway Lines, Buffer Zones, and School Locations")
+```
+
+```{r}
+school_points <- st_make_valid(school_points)
+```
+
+```{r}
+# Validate geometries in school_points
+invalid_schools <- school_points[!st_is_valid(school_points), ]
+cat("Number of invalid geometries in school_points:", nrow(invalid_schools), "\n")
+
+# Fix invalid geometries in school_points
+school_points <- st_make_valid(school_points)
+
+# Validate geometries in subway_buffers
+invalid_buffers <- subway_buffers[!st_is_valid(subway_buffers), ]
+cat("Number of invalid geometries in subway_buffers:", nrow(invalid_buffers), "\n")
+
+# Fix invalid geometries in subway_buffers
+subway_buffers <- st_make_valid(subway_buffers)
+
+```
+
+```{r}
+schools_within_buffer <- st_join(school_points, subway_buffers, join = st_intersects, left = FALSE)
+
+total_schools <- nrow(school_points)
+schools_in_buffer <- nrow(schools_within_buffer)
+schools_outside_buffer <- total_schools - schools_in_buffer
+
+cat("Total Schools:", total_schools, "\n")
+cat("Schools Within Buffer:", schools_in_buffer, "\n")
+cat("Schools Outside Buffer:", schools_outside_buffer, "\n")
+```
+```{r}
+coverage_percentage <- (schools_in_buffer / total_schools) * 100
+cat("School Coverage Percentage:", coverage_percentage, "%\n")
+
+distances <- st_distance(school_points, subway_lines)
+min_distances <- apply(distances, 1, min)
+
+school_points$min_distance_to_subway <- as.numeric(min_distances)
+
+average_distance <- mean(min_distances)
+cat("Average Distance to Subway (meters):", average_distance, "meters\n")
+
+ggplot(data = as.data.frame(school_points)) +
+  geom_histogram(aes(x = min_distance_to_subway), bins = 30, fill = "steelblue") +
+  labs(title = "Distribution of School Distances to Subway Lines",
+       x = "Minimum Distance (meters)",
+       y = "Count") +
+  theme_minimal()
+```
 ## Hypothesis Testing (Regression)
-
 ```{r}
-#| label: plot-regression
-merged_sub_sf <- readRDS("merged_sub_sf.rds")
-merged_sub_sf |> head()
+library(spatstat)
+
+# Convert school points to a spatstat object
+school_ppp <- as.ppp(st_coordinates(school_points), W = as.owin(st_bbox(school_points)))
+
+# Estimate the intensity function
+intensity <- density(school_ppp, sigma = 0.01)  # Adjust sigma for smoothing
+
+# Visualize the intensity function
+plot(intensity, main = "Intensity Function of School Locations")
 ```
 
 ```{r}
-merged_sub_sf |> ggplot(aes(x=scaled_dist, y=total_score, label=NAME_ENGLI)) +
-  geom_point() +
-  geom_smooth(method='lm', formula= y~x) +
-  geom_text(size=4, nudge_y = 0.075) +
-  theme_classic()
+# Compute the K function for observed school locations
+k_obs <- Kest(school_ppp)
+
+# Plot the observed K function
+plot(k_obs, main = "Observed K Function for School Locations")
+```
+```{r}
+set.seed(6750)
+
+# Run 999 Monte Carlo simulations
+n_simulations <- 999
+k_sim <- envelope(school_ppp, Kest, nsim = n_simulations)
+
+# Visualize the envelope of simulated K functions
+plot(k_sim, main = "K Function with Monte Carlo Envelope")
+```
+
+```{r}
+# Overlay observed K function with the simulated envelope
+plot(k_sim, main = "Comparison of Observed and Simulated K Functions")
+lines(k_obs, col = "red", lwd = 2)  # Add observed K function
+```
+
+```{r}
+# Plot the intensity of schools and subway lines
+library(ggplot2)
+
+ggplot() +
+  geom_sf(data = subway_lines, color = "blue", size = 0.5) +
+  geom_sf(data = school_points, aes(color = log(min_distance_to_subway)), size = 1) +
+  scale_color_viridis_c(option = "plasma", name = "Log Distance (m)") + # Apply a viridis color scale for better visualization
+  labs(
+    title = "Spatial Distribution of Schools and Subway Lines",
+    subtitle = "Color represents log-transformed distance to the nearest subway line"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+library(raster)
+# Extract density values for each school
+density_raster <- raster(intensity)
+school_points$density <- raster::extract(density_raster, st_coordinates(school_points))
+```
+
+```{r}
+# Calculate the correlation between school density and proximity to subway lines
+correlation <- cor(school_points$min_distance_to_subway, school_points$density, use = "complete.obs")
+cat("Correlation between school density and subway proximity:", correlation, "\n")
+
+```
+```{r}
+model <- lm(density ~ min_distance_to_subway, data = school_points)
+summary(model)
 ```
 
 ## Discussion
 
+Observed Pattern:
+
+The clustering of schools is significant, particularly at smaller distances (r<0.05). This suggests that schools tend to be located close to one another more often than would be expected under random placement.
+
+The clustering of schools could be related to urban planning policies, population density, or access to infrastructure (e.g., proximity to subway lines).
+
+
+Relationship:
+
+Statistical Significance
+Both the intercept and slope are highly significant (p<2e−16).
+The significant negative slope indicates that schools are more densely clustered closer to subway lines, supporting the Alternative Hypothesis (H₁).
+
+This aligns with urban planning principles, where schools are often placed near transit hubs for accessibility.
+
+While the relationship is significant, the low R-squared suggests that factors beyond proximity to subway lines (e.g., population density, neighborhood infrastructure) also influence school clustering.
 ## Conclusion
 
-Our evidence indicates that the spatial dynamics of **conflict** differ from the spatial dynamics of **misgovernance**. Whereas 
+Based on the regression results:
+
+We reject the Null Hypothesis (H₀) in favor of the Alternative Hypothesis (H₁).
+The NYC subway system significantly impacts school density, with schools clustering closer to subway lines.
+Although the R-squared value suggests additional factors influence school density, the relationship with subway proximity is strong and statistically significant.
+
+The NYC subway system is effective in providing access to schools, as evidenced by the clustering of schools near subway lines.
